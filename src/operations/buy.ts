@@ -9,7 +9,6 @@ import {
   Operation,
   OperationHandler,
   OperationScope,
-  PublicKey,
   Signer,
   toBigNumber,
   toPublicKey,
@@ -17,15 +16,28 @@ import {
   TransactionBuilderOptions,
   useOperation,
 } from '@metaplex-foundation/js';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { AccountMeta, ComputeBudgetProgram, TransactionInstruction } from '@solana/web3.js';
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountInstruction,
+  getAssociatedTokenAddress,
+  TOKEN_PROGRAM_ID,
+} from '@solana/spl-token';
+import {
+  AccountMeta,
+  ComputeBudgetProgram,
+  PublicKey,
+  TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js';
+import { BaseInput } from '../models/BaseInput';
+import { BaseOutput } from '../models/BaseOutput';
 import { toLamports } from '../utility/sol';
 
 const Key = 'BuyOperation' as const;
 
 export type BuyInput = {
   listedPrice: string;
-  auctionHouse: PublicKey;
   auctionHouseAuthority: PublicKey;
   auctionHouseFeeAccount: PublicKey;
   auctionHouseTreasury: PublicKey;
@@ -39,11 +51,11 @@ export type BuyInput = {
   sellerTradeStateBump: number;
   creators: AccountMeta[];
   buyer?: Signer;
-};
+} & BaseInput;
 
 export type BuyOutput = {
   buyerReceiptTokenAccount: PublicKey;
-};
+} & BaseOutput;
 
 export type BuyOperation = Operation<typeof Key, BuyInput, BuyOutput>;
 
@@ -56,9 +68,45 @@ export const buyOperationHandler: OperationHandler<BuyOperation> = {
     scope: OperationScope
   ): Promise<BuyOutput> {
     const builder = await buyBuilder(metaplex, operation.input, scope);
+
+    const { blockhash, lastValidBlockHeight } = await metaplex.connection.getLatestBlockhash();
+
+    const lookupTableAccount = await metaplex.connection
+      .getAddressLookupTable(operation.input.addressLookupTable)
+      .then((res) => res.value);
+
+    const messageV0 = new TransactionMessage({
+      payerKey: builder.getFeePayer()!.publicKey,
+      recentBlockhash: blockhash,
+      instructions: builder.getInstructions(),
+    }).compileToV0Message([lookupTableAccount!]);
+
+    const transactionV0 = new VersionedTransaction(messageV0);
+    //transactionV0.sign(builder.getSigners()); // Does not work as Metaplex sdk's Signer type is different.
+    const signedTx = await operation.input.signTransaction(transactionV0);
+
     const confirmOptions = makeConfirmOptionsFinalizedOnMainnet(metaplex, scope.confirmOptions);
-    const output = await builder.sendAndConfirm(metaplex, confirmOptions);
+
+    const signature = await metaplex.connection.sendRawTransaction(
+      signedTx.serialize(),
+      confirmOptions
+    );
+
+    const response = await metaplex
+      .rpc()
+      .confirmTransaction(
+        signature,
+        { blockhash, lastValidBlockHeight },
+        confirmOptions?.commitment
+      );
+
+    const output = {
+      response,
+      ...builder.getContext(),
+    };
+
     scope.throwIfCanceled();
+
     return output;
   },
 };
@@ -91,6 +139,7 @@ export const buyBuilder = async (
     sellerTradeStateBump,
     creators,
     buyer: _buyer,
+    addressLookupTable,
   }: BuyBuilderParams,
   options: TransactionBuilderOptions = {}
 ): Promise<TransactionBuilder<BuyBuilderContext>> => {
@@ -133,11 +182,12 @@ export const buyBuilder = async (
       tokenAccount: associatedTokenAccount,
     });
 
-  const buyerReceiptTokenAccount = await Token.getAssociatedTokenAddress(
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
+  const buyerReceiptTokenAccount = await getAssociatedTokenAddress(
     tokenMint,
-    buyer.publicKey
+    buyer.publicKey,
+    undefined,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
   const rewardCenter = metaplex.rewardCenter().pdas().rewardCenter({ auctionHouse });
@@ -151,35 +201,37 @@ export const buyBuilder = async (
     rewardCenter,
   });
 
-  const rewardCenterRewardTokenAccount = await Token.getAssociatedTokenAddress(
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
+  const rewardCenterRewardTokenAccount = await getAssociatedTokenAddress(
     rewardCenterToken,
     rewardCenter,
-    true
+    true,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
-  const buyerRewardTokenAccount = await Token.getAssociatedTokenAddress(
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
+  const buyerRewardTokenAccount = await getAssociatedTokenAddress(
     rewardCenterToken,
-    buyer.publicKey
+    buyer.publicKey,
+    undefined,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
-  const buyerATAInstruction = Token.createAssociatedTokenAccountInstruction(
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
-    rewardCenterToken,
+  const buyerATAInstruction = createAssociatedTokenAccountInstruction(
+    buyer.publicKey,
     buyerRewardTokenAccount,
     buyer.publicKey,
-    buyer.publicKey
+    rewardCenterToken,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
-  const sellerRewardTokenAccount = await Token.getAssociatedTokenAddress(
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
+  const sellerRewardTokenAccount = await getAssociatedTokenAddress(
     rewardCenterToken,
-    seller
+    seller,
+    undefined,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
   const accounts: BuyListingInstructionAccounts = {
