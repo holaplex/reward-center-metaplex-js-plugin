@@ -29,6 +29,7 @@ import {
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
+  Signer as SolanaSigner,
 } from '@solana/web3.js';
 import { BaseInput } from '../models/BaseInput';
 import { BaseOutput } from '../models/BaseOutput';
@@ -82,13 +83,13 @@ export const buyOperationHandler: OperationHandler<BuyOperation> = {
     }).compileToV0Message([lookupTableAccount!]);
 
     const transactionV0 = new VersionedTransaction(messageV0);
-    //transactionV0.sign(builder.getSigners()); // Does not work as Metaplex sdk's Signer type is different.
-    const signedTx = await operation.input.signTransaction(transactionV0);
+    // Metaplex sdk's Signer type is different than Solana/Web3 Signer type.
+    transactionV0.sign(builder.getSigners() as SolanaSigner[]);
 
     const confirmOptions = makeConfirmOptionsFinalizedOnMainnet(metaplex, scope.confirmOptions);
 
     const signature = await metaplex.connection.sendRawTransaction(
-      signedTx.serialize(),
+      transactionV0.serialize(),
       confirmOptions
     );
 

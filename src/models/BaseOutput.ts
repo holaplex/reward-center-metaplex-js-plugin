@@ -1,7 +1,4 @@
-import {
-  ConfirmTransactionResponse,
-  SendAndConfirmTransactionResponse,
-} from '@metaplex-foundation/js';
+import { ConfirmTransactionResponse } from '@metaplex-foundation/js';
 
 export type BaseOutput = {
   /** The blockchain response from confirming the transaction. */
