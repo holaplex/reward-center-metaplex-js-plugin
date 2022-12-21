@@ -1,7 +1,9 @@
 import {
-  BuyListingInstructionAccounts,
-  BuyListingInstructionArgs,
-  createBuyListingInstruction,
+  AcceptOfferInstructionAccounts,
+  AcceptOfferInstructionArgs,
+  CloseListingInstructionAccounts,
+  createAcceptOfferInstruction,
+  createCloseListingInstruction,
 } from '@holaplex/hpl-reward-center';
 import {
   makeConfirmOptionsFinalizedOnMainnet,
@@ -9,6 +11,7 @@ import {
   Operation,
   OperationHandler,
   OperationScope,
+  PublicKey,
   Signer,
   toBigNumber,
   toPublicKey,
@@ -18,14 +21,13 @@ import {
 } from '@metaplex-foundation/js';
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
-  getAssociatedTokenAddress,
   TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
 import {
   AccountMeta,
   ComputeBudgetProgram,
-  PublicKey,
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
@@ -35,10 +37,11 @@ import { BaseInput } from '../models/BaseInput';
 import { BaseOutput } from '../models/BaseOutput';
 import { toLamports } from '../utility/sol';
 
-const Key = 'BuyOperation' as const;
+const Key = 'AcceptOfferOperation' as const;
 
-export type BuyInput = {
-  listedPrice: string;
+export type AcceptOfferInput = {
+  amount: string;
+  auctionHouse: PublicKey;
   auctionHouseAuthority: PublicKey;
   auctionHouseFeeAccount: PublicKey;
   auctionHouseTreasury: PublicKey;
@@ -47,28 +50,28 @@ export type BuyInput = {
   metadata: PublicKey;
   associatedTokenAccount: PublicKey;
   rewardCenterToken: PublicKey;
-  seller: PublicKey;
-  sellerTradeState: PublicKey;
-  sellerTradeStateBump: number;
+  offerBuyer: PublicKey;
   creators: AccountMeta[];
-  buyer?: Signer;
+  seller?: Signer;
 } & BaseInput;
 
-export type BuyOutput = {
+export type AcceptOfferOutput = {
+  buyerTradeState: PublicKey;
+  metadata: PublicKey;
   buyerReceiptTokenAccount: PublicKey;
 } & BaseOutput;
 
-export type BuyOperation = Operation<typeof Key, BuyInput, BuyOutput>;
+export type AcceptOfferOperation = Operation<typeof Key, AcceptOfferInput, AcceptOfferOutput>;
 
-export const buyOperation = useOperation<BuyOperation>(Key);
+export const acceptOfferOperation = useOperation<AcceptOfferOperation>(Key);
 
-export const buyOperationHandler: OperationHandler<BuyOperation> = {
+export const acceptOfferOperationHandler: OperationHandler<AcceptOfferOperation> = {
   async handle(
-    operation: BuyOperation,
+    operation: AcceptOfferOperation,
     metaplex: Metaplex,
     scope: OperationScope
-  ): Promise<BuyOutput> {
-    const builder = await buyBuilder(metaplex, operation.input, scope);
+  ): Promise<AcceptOfferOutput> {
+    const builder = await acceptOfferBuilder(metaplex, operation.input, scope);
 
     const { blockhash, lastValidBlockHeight } = await metaplex.connection.getLatestBlockhash();
 
@@ -88,7 +91,6 @@ export const buyOperationHandler: OperationHandler<BuyOperation> = {
     transactionV0.sign(builder.getSigners() as SolanaSigner[]);
 
     const confirmOptions = makeConfirmOptionsFinalizedOnMainnet(metaplex, scope.confirmOptions);
-
     const signature = await metaplex.connection.sendRawTransaction(
       transactionV0.serialize(),
       confirmOptions
@@ -108,7 +110,6 @@ export const buyOperationHandler: OperationHandler<BuyOperation> = {
     };
 
     scope.throwIfCanceled();
-
     return output;
   },
 };
@@ -117,16 +118,16 @@ export const buyOperationHandler: OperationHandler<BuyOperation> = {
 // Builder
 // -----------------
 
-export type BuyBuilderParams = Omit<BuyInput, 'confirmOptions'> & {
+export type AcceptOfferBuilderParams = Omit<AcceptOfferInput, 'confirmOptions'> & {
   instructionKey?: string;
 };
 
-export type BuyBuilderContext = Omit<BuyOutput, 'response' | 'buy'>;
+export type AcceptOfferBuilderContext = Omit<AcceptOfferOutput, 'response' | 'acceptOffer'>;
 
-export const buyBuilder = async (
+export const acceptOfferBuilder = async (
   metaplex: Metaplex,
   {
-    listedPrice,
+    amount,
     auctionHouse,
     auctionHouseAuthority,
     auctionHouseFeeAccount,
@@ -136,39 +137,49 @@ export const buyBuilder = async (
     metadata,
     associatedTokenAccount,
     rewardCenterToken,
-    seller,
-    sellerTradeState,
-    sellerTradeStateBump,
+    offerBuyer,
     creators,
-    buyer: _buyer,
-    addressLookupTable,
-  }: BuyBuilderParams,
+    seller: _seller,
+  }: AcceptOfferBuilderParams,
   options: TransactionBuilderOptions = {}
-): Promise<TransactionBuilder<BuyBuilderContext>> => {
+): Promise<TransactionBuilder<AcceptOfferBuilderContext>> => {
   const { programs, payer = metaplex.rpc().getDefaultFeePayer() } = options;
-  const buyer = _buyer ?? (metaplex.identity() as Signer);
-  const price = toLamports(Number(listedPrice));
+  const seller = _seller ?? (metaplex.identity() as Signer);
+  const sellerPublicKey = toPublicKey(seller);
+  const buyerPrice = toLamports(Number(amount));
+
+  const escrowPaymentAccount = metaplex
+    .auctionHouse()
+    .pdas()
+    .buyerEscrow({ auctionHouse, buyer: offerBuyer, programs });
 
   const buyerTradeState = metaplex
     .auctionHouse()
     .pdas()
     .tradeState({
       auctionHouse,
-      price: toBigNumber(price),
+      price: toBigNumber(buyerPrice),
       tokenMint,
       tokenSize: toBigNumber(1),
       treasuryMint: auctionHouseTreasuryMint,
-      wallet: toPublicKey(buyer),
+      wallet: offerBuyer,
       programs,
       tokenAccount: tokenMint,
     });
 
-  const escrowPaymentAccount = metaplex
+  const sellerTradeState = metaplex
     .auctionHouse()
     .pdas()
-    .buyerEscrow({ auctionHouse, buyer: toPublicKey(buyer), programs });
-
-  const programAsSigner = metaplex.auctionHouse().pdas().programAsSigner({ programs });
+    .tradeState({
+      auctionHouse,
+      price: toBigNumber(buyerPrice),
+      tokenMint,
+      tokenSize: toBigNumber(1),
+      treasuryMint: auctionHouseTreasuryMint,
+      wallet: sellerPublicKey,
+      programs,
+      tokenAccount: tokenMint,
+    });
 
   const freeSellerTradeState = metaplex
     .auctionHouse()
@@ -179,24 +190,19 @@ export const buyBuilder = async (
       tokenMint,
       tokenSize: toBigNumber(1),
       treasuryMint: auctionHouseTreasuryMint,
-      wallet: seller,
+      wallet: sellerPublicKey,
       programs,
       tokenAccount: associatedTokenAccount,
     });
 
-  const buyerReceiptTokenAccount = await getAssociatedTokenAddress(
-    tokenMint,
-    buyer.publicKey,
-    undefined,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
-  );
+  const programAsSigner = metaplex.auctionHouse().pdas().programAsSigner({ programs });
 
   const rewardCenter = metaplex.rewardCenter().pdas().rewardCenter({ auctionHouse });
-  const listing = metaplex
+
+  const offer = metaplex
     .rewardCenter()
     .pdas()
-    .listingAddress({ metadata, rewardCenter, seller, programs });
+    .offerAddress({ buyer: offerBuyer, metadata, rewardCenter });
 
   const auctioneer = metaplex.rewardCenter().pdas().auctioneerAddress({
     auctionHouse,
@@ -211,44 +217,52 @@ export const buyBuilder = async (
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
-  const buyerRewardTokenAccount = await getAssociatedTokenAddress(
-    rewardCenterToken,
-    buyer.publicKey,
+  const buyerReceiptTokenAccount = await getAssociatedTokenAddress(
+    tokenMint,
+    offerBuyer,
     undefined,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
-  );
-
-  const buyerATAInstruction = createAssociatedTokenAccountInstruction(
-    buyer.publicKey,
-    buyerRewardTokenAccount,
-    buyer.publicKey,
-    rewardCenterToken,
     TOKEN_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
   const sellerRewardTokenAccount = await getAssociatedTokenAddress(
     rewardCenterToken,
-    seller,
+    sellerPublicKey,
     undefined,
     TOKEN_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
-  const accounts: BuyListingInstructionAccounts = {
-    buyer: toPublicKey(buyer),
-    buyerRewardTokenAccount,
-    seller,
+  const sellerATAInstruction = createAssociatedTokenAccountInstruction(
+    sellerPublicKey,
     sellerRewardTokenAccount,
-    listing,
+    sellerPublicKey,
+    rewardCenterToken,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+
+  const buyerRewardTokenAccount = await getAssociatedTokenAddress(
+    rewardCenterToken,
+    offerBuyer,
+    undefined,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+
+  const sellerAtAInfo = await metaplex.connection.getAccountInfo(sellerRewardTokenAccount);
+
+  const acceptOfferAccounts: AcceptOfferInstructionAccounts = {
+    buyer: offerBuyer,
+    buyerRewardTokenAccount,
+    seller: sellerPublicKey,
+    sellerRewardTokenAccount,
+    offer,
     tokenAccount: associatedTokenAccount,
-    paymentAccount: toPublicKey(buyer),
-    transferAuthority: toPublicKey(buyer),
     tokenMint,
     metadata,
     treasuryMint: auctionHouseTreasuryMint,
-    sellerPaymentReceiptAccount: seller,
+    sellerPaymentReceiptAccount: sellerPublicKey,
     buyerReceiptTokenAccount,
     authority: auctionHouseAuthority,
     escrowPaymentAccount,
@@ -265,49 +279,81 @@ export const buyBuilder = async (
     auctionHouseProgram: metaplex.programs().getAuctionHouse().address,
   };
 
-  const args: BuyListingInstructionArgs = {
-    buyListingParams: {
+  const acceptOfferArgs: AcceptOfferInstructionArgs = {
+    acceptOfferParams: {
       escrowPaymentBump: escrowPaymentAccount.bump,
       freeTradeStateBump: freeSellerTradeState.bump,
-      sellerTradeStateBump,
+      sellerTradeStateBump: sellerTradeState.bump,
       programAsSignerBump: programAsSigner.bump,
       buyerTradeStateBump: buyerTradeState.bump,
     },
   };
 
-  const buyListingIx = createBuyListingInstruction(accounts, args);
-  const keys = buyListingIx.keys.concat(creators);
+  const acceptOfferIx = createAcceptOfferInstruction(acceptOfferAccounts, acceptOfferArgs);
+  const keys = acceptOfferIx.keys.concat(creators);
 
-  const buyerAtAInfo = await metaplex.connection.getAccountInfo(buyerRewardTokenAccount);
-
-  const builder = TransactionBuilder.make<BuyBuilderContext>().setFeePayer(payer).setContext({
-    buyerReceiptTokenAccount,
-  });
-
-  const ix = ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 });
+  const builder = TransactionBuilder.make<AcceptOfferBuilderContext>()
+    .setFeePayer(payer)
+    .setContext({
+      buyerTradeState,
+      metadata,
+      buyerReceiptTokenAccount,
+    });
 
   builder.add({
-    instruction: ix,
-    signers: [buyer],
-    key: 'setComputeUnitLimit',
+    instruction: ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
+    signers: [seller],
+    key: 'computeUnitLimit',
   });
 
-  if (!buyerAtAInfo) {
+  const listingAddress = metaplex.rewardCenter().pdas().listingAddress({
+    metadata,
+    rewardCenter,
+    seller: sellerPublicKey,
+    programs,
+  });
+
+  if (listingAddress) {
+    const accounts: CloseListingInstructionAccounts = {
+      auctionHouseProgram: metaplex.programs().getAuctionHouse().address,
+      listing: listingAddress,
+      rewardCenter: rewardCenter,
+      wallet: sellerPublicKey,
+      tokenAccount: associatedTokenAccount,
+      metadata: metadata,
+      authority: auctionHouseAuthority,
+      auctionHouse,
+      auctionHouseFeeAccount,
+      tokenMint,
+      tradeState: sellerTradeState,
+      ahAuctioneerPda: auctioneer,
+    };
+
+    const closeListingIx = createCloseListingInstruction(accounts);
+
     builder.add({
-      instruction: buyerATAInstruction,
-      signers: [buyer],
-      key: 'buyerATA',
+      instruction: closeListingIx,
+      signers: [seller],
+      key: 'closeListing',
+    });
+  }
+
+  if (!sellerAtAInfo) {
+    builder.add({
+      instruction: sellerATAInstruction,
+      signers: [seller],
+      key: 'sellerATA',
     });
   }
 
   builder.add({
     instruction: new TransactionInstruction({
       programId: metaplex.programs().getRewardCenter().address,
-      data: buyListingIx.data,
+      data: acceptOfferIx.data,
       keys,
     }),
-    signers: [buyer],
-    key: 'buyListing',
+    signers: [seller],
+    key: 'acceptOffer',
   });
 
   return builder;
