@@ -85,6 +85,7 @@ export const buyOperationHandler: OperationHandler<BuyOperation> = {
     const transactionV0 = new VersionedTransaction(messageV0);
 
     // Metaplex sdk's Signer type is different than Solana/Web3 Signer type.
+
     transactionV0.sign(builder.getSigners() as SolanaSigner[]);
 
     const confirmOptions = makeConfirmOptionsFinalizedOnMainnet(metaplex, scope.confirmOptions);

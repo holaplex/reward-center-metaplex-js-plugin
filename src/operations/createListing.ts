@@ -42,7 +42,12 @@ export type CreateListingInput = {
   seller?: Signer;
 } & BaseInput;
 
-export type CreateListingOutput = {} & BaseOutput;
+export type CreateListingOutput = {
+  listingAddress: PublicKey;
+  sellerTradeState: PublicKey;
+  tradeStateBump: number;
+  buyerPrice: string;
+} & BaseOutput;
 
 export type CreateListingOperation = Operation<typeof Key, CreateListingInput, CreateListingOutput>;
 
@@ -214,7 +219,12 @@ export const createListingBuilder = async (
 
   const builder = TransactionBuilder.make<CreateListingBuilderContext>()
     .setFeePayer(payer)
-    .setContext({});
+    .setContext({
+      listingAddress,
+      sellerTradeState,
+      tradeStateBump: sellerTradeState.bump,
+      buyerPrice: amount,
+    });
 
   if (!sellerAtAInfo) {
     builder.add({

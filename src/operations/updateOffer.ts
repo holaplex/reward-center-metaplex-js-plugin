@@ -40,13 +40,13 @@ export type UpdateOfferInput = {
   buyer?: Signer;
 } & BaseInput;
 
-export type UpdateOfferOutput = {} & BaseOutput;
+export type UpdateOfferOutput = { newOfferPrice: string } & BaseOutput;
 
 export type UpdateOfferOperation = Operation<typeof Key, UpdateOfferInput, UpdateOfferOutput>;
 
 export const updateOfferOperation = useOperation<UpdateOfferOperation>(Key);
 
-export const makeOfferOperationHandler: OperationHandler<UpdateOfferOperation> = {
+export const updateOfferOperationHandler: OperationHandler<UpdateOfferOperation> = {
   async handle(
     operation: UpdateOfferOperation,
     metaplex: Metaplex,
@@ -225,7 +225,7 @@ export const updateOfferBuilder = async (
 
   const builder = TransactionBuilder.make<UpdateOfferBuilderContext>()
     .setFeePayer(payer)
-    .setContext({});
+    .setContext({ newOfferPrice });
 
   builder.add({
     instruction: createCloseOfferInstruction(closeOfferAccounts, closeOfferArgs),

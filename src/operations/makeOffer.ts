@@ -196,7 +196,7 @@ export const makeOfferBuilder = async (
   const buyerRewardTokenAccount = await getAssociatedTokenAddress(
     rewardCenterToken,
     buyer.publicKey,
-    undefined,
+    true,
     TOKEN_PROGRAM_ID,
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
