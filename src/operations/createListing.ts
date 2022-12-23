@@ -17,12 +17,7 @@ import {
   TransactionBuilderOptions,
   useOperation,
 } from '@metaplex-foundation/js';
-import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-} from '@solana/spl-token';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { TransactionMessage, VersionedTransaction, Signer as SolanaSigner } from '@solana/web3.js';
 import { BaseInput } from '../models/BaseInput';
 import { BaseOutput } from '../models/BaseOutput';
@@ -198,21 +193,20 @@ export const createListingBuilder = async (
     },
   };
 
-  const sellerRewardTokenAccount = await getAssociatedTokenAddress(
-    rewardCenterToken,
-    sellerPublicKey,
-    undefined,
+  const sellerRewardTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    rewardCenterToken,
+    sellerPublicKey
   );
 
-  const sellerATAInstruction = createAssociatedTokenAccountInstruction(
-    sellerPublicKey,
+  const sellerATAInstruction = Token.createAssociatedTokenAccountInstruction(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    rewardCenterToken,
     sellerRewardTokenAccount,
     sellerPublicKey,
-    rewardCenterToken,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    sellerPublicKey
   );
 
   const sellerAtAInfo = await metaplex.connection.getAccountInfo(sellerRewardTokenAccount);

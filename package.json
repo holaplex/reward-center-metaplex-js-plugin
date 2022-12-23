@@ -1,6 +1,6 @@
 {
   "name": "reward-center-metaplex-js-plugin",
-  "version": "1.0.0",
+  "version": "1.0.7",
   "description": "Metplex JS plugin for Holaplex Reward Center Program",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,7 +25,8 @@
   "dependencies": {
     "@holaplex/hpl-reward-center": "^0.2.4",
     "@metaplex-foundation/js": "^0.17.10",
-    "@solana/web3.js": "^1.70.1"
+    "@solana/spl-token": "^0.1.8",
+    "@solana/web3.js": "^1.70.3"
   },
   "devDependencies": {
     "@types/node": "^18.11.15",

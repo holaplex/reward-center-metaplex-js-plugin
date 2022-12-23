@@ -16,12 +16,7 @@ import {
   TransactionBuilderOptions,
   useOperation,
 } from '@metaplex-foundation/js';
-import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
-  getAssociatedTokenAddress,
-  TOKEN_PROGRAM_ID,
-} from '@solana/spl-token';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
   AccountMeta,
   ComputeBudgetProgram,
@@ -185,12 +180,11 @@ export const buyBuilder = async (
       tokenAccount: associatedTokenAccount,
     });
 
-  const buyerReceiptTokenAccount = await getAssociatedTokenAddress(
-    tokenMint,
-    buyer.publicKey,
-    undefined,
+  const buyerReceiptTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    tokenMint,
+    buyer.publicKey
   );
 
   const rewardCenter = metaplex.rewardCenter().pdas().rewardCenter({ auctionHouse });
@@ -204,37 +198,35 @@ export const buyBuilder = async (
     rewardCenter,
   });
 
-  const rewardCenterRewardTokenAccount = await getAssociatedTokenAddress(
+  const rewardCenterRewardTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
     rewardCenterToken,
     rewardCenter,
-    true,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    true
   );
 
-  const buyerRewardTokenAccount = await getAssociatedTokenAddress(
+  const buyerRewardTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
     rewardCenterToken,
-    buyer.publicKey,
-    undefined,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    buyer.publicKey
   );
 
-  const buyerATAInstruction = createAssociatedTokenAccountInstruction(
-    buyer.publicKey,
+  const buyerATAInstruction = Token.createAssociatedTokenAccountInstruction(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    rewardCenterToken,
     buyerRewardTokenAccount,
     buyer.publicKey,
-    rewardCenterToken,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    buyer.publicKey
   );
 
-  const sellerRewardTokenAccount = await getAssociatedTokenAddress(
-    rewardCenterToken,
-    seller,
-    undefined,
+  const sellerRewardTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    rewardCenterToken,
+    seller
   );
 
   const accounts: BuyListingInstructionAccounts = {

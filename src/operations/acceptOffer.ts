@@ -19,12 +19,7 @@ import {
   TransactionBuilderOptions,
   useOperation,
 } from '@metaplex-foundation/js';
-import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-} from '@solana/spl-token';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
   AccountMeta,
   ComputeBudgetProgram,
@@ -209,47 +204,43 @@ export const acceptOfferBuilder = async (
     rewardCenter,
   });
 
-  const rewardCenterRewardTokenAccount = await getAssociatedTokenAddress(
+  const rewardCenterRewardTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
     rewardCenterToken,
     rewardCenter,
-    true,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    true
   );
 
-  const buyerReceiptTokenAccount = await getAssociatedTokenAddress(
+  const buyerReceiptTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
     tokenMint,
-    offerBuyer,
-    undefined,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    offerBuyer
   );
 
-  const sellerRewardTokenAccount = await getAssociatedTokenAddress(
+  const sellerRewardTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
     rewardCenterToken,
-    sellerPublicKey,
-    undefined,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    sellerPublicKey
   );
 
-  const sellerATAInstruction = createAssociatedTokenAccountInstruction(
-    sellerPublicKey,
+  const sellerATAInstruction = Token.createAssociatedTokenAccountInstruction(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    rewardCenterToken,
     sellerRewardTokenAccount,
     sellerPublicKey,
-    rewardCenterToken,
-    TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    sellerPublicKey
   );
 
-  const buyerRewardTokenAccount = await getAssociatedTokenAddress(
-    rewardCenterToken,
-    offerBuyer,
-    undefined,
+  const buyerRewardTokenAccount = await Token.getAssociatedTokenAddress(
+    ASSOCIATED_TOKEN_PROGRAM_ID,
     TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    rewardCenterToken,
+    offerBuyer
   );
-
   const sellerAtAInfo = await metaplex.connection.getAccountInfo(sellerRewardTokenAccount);
 
   const acceptOfferAccounts: AcceptOfferInstructionAccounts = {
